@@ -1,0 +1,725 @@
+---
+title: "Final Project Report"
+author: "Adam Hetherwick"
+date: "5/19/2023"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Abstract
+
+In this analysis, data was collected from a previous study in 2019 by scientist Nicholas A. Steinmetz, which examines neuron activity of mice after being exposed to stimuli. This data and relevant variables such as contrast levels, neuron spikes, trial success or failure, and mice name were used to predict future behavior in the mice. This information is important for us to study because mice neuron patterns are comparable to humans’ and therefore we can use findings from this study to assist in understanding neurological activities and patterns. Mapping and examining the dataset included creating graphs of neuron activity on the trial and session level, and descriptive tables. We investigated which variables and parameters we could use to create a predictive model, by training our model on sessions 2 through 17 then testing them on sessions 1 and 18. We chose to move forward with a linear determinant analysis model with reduced amount of predictors because that model had a low AIC value and the highest predictability. We then tested the model on 100 random trials from sessions 1 and 18 and found that the accuracy was lower than it was for our model training. This could be due to the fact that the random trials in sessions 1 and 18 were especially unique compared to the other sessions and trials included in model training. 
+
+
+### Introduction
+
+Studying and mapping neuron activity is an important part of understanding brain functions, neurological disorders, brain-machine interfaces, and general neuroscience advancements. We can examine neuron activity through exposure to stimuli, which can provide us with a platform to perform statistical analysis techniques on data trends. A study in 2019 by scientists Nicholas A. Steinmetz et. al mapped such neuron activity in lab mice after exposing them to two different visual stimuli. Mice were equipped with neuropixel probes to measure the neuron activity after being exposed to two screens with varying contrasts. The mice were influenced to make a decision based on the stimuli, and were given a reward if they made the correct choice. I utilized the Steinmetz et. al study dataset to map such neuron activity and build statistical models off some key features and variables such as average spikes per session and trial, total neuron spikes per session and trial, contrast levels on both the left and right side, differences in contrast, mouse species name, number of trials, and number of unique neurons detected. These variables were all considered when attempting to evaluate future behavioral success, or feedback type. We may hypothesize that as the number of trials continues, the mice will become more and more familiar with what choices lead to reward, and thus have higher success rates. We may also hypothesize that presence or absence of certain neurons will result in the correct decisions from the mice. We can investigate these hypothesis through exploratory data analysis.
+
+### Background
+
+The data for this analysis was collected from the Steinmetz et. al study in 2019 where different mice were subject to neurological testing over hundreds to thousands of trials that are compiled into sessions. Each trial was roughly 4 seconds long and the neuron activity during those trials was measured in spikes. Each trial has values for contrast left and contrast right, which indicate the vibrance each stimuli represented, on both the left and right side of the mouse. Mice were equipped with neuropixel probes to measure the neuron activity over trials. The brain areas and neurons for each trial were also recorded, thus providing us with ample information to perform our analysis. All these variables were included in statistical analysis techniques to measure future patterns of success or failure, as seen through the feedback type. The study was performed on mice and thus would be used to predict future neuron activity of humans, as seen in studies analyzing Alzheimer's disease (Hall et. al 2011). Our data comes from a reputable and trustworthy source, as Nicholas A. Steinmetz has been given multiple awards for his exemplary research in the neuroscience field after his PhD at Stanford in 2014 (Steinmetz 2023). 
+
+### Descriptive Analysis
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+session=list()
+for(i in 1:18){
+  session[[i]]=readRDS(paste('C:/Users/cheif/RProjects/STA141A/session',i,'.rds',sep=''))
+}
+```
+
+The data we chose to look at consists of 18 sessions, each consisting of hundreds to thousands of trials. Each session was performed on different mice, totaling 4 mice. Each trial lasted roughly 4 seconds and the neuron activity from each trial was recorded in the form of spikes for each time bin. In each trial, mice were presented with stimuli on both sides of them, which are indicated in the contrast_left and contrast_right variables. In order to continue our analysis and commit to statistical models, we must understand the dataset further. 
+
+## Part 1 - Exploratory Data Analysis
+
+# i) Summary Statistics
+
+To describe the data structures across sessions, we can create a table with summary statistics from each session. This information will help us understand the dataset better and continue with our analysis.
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+library(tidyverse)
+data_structures_func <- function(){
+  num_trials_list <- c()
+  neurons_list <- c()
+  mouse_names <- c()
+  mean_feedback <- c()
+  num_brain_areas <- c()
+  dates <- c()
+  session_success_rate <- c()
+  for (n in 1:length(session)){
+    num_trials_list <- append(num_trials_list, length(session[[n]]$spks))
+    neurons_list <- append(neurons_list, dim(session[[n]]$spks[[1]])[1])
+    mouse_names <- append(mouse_names, session[[n]]$mouse_name)
+    mean_feedback <- append(mean_feedback, (mean(session[[n]]$feedback_type + 1)/2))
+    num_brain_areas <- append(num_brain_areas, length(unique(session[[n]]$brain_area)))
+    dates <- append(dates, session[[n]]$date_exp)
+  }
+  tibble <- tibble(session = unlist(1:length(session)),
+                   mouse = unlist(mouse_names),
+                   date = unlist(dates),
+                   trials = unlist(num_trials_list),
+                   neurons = unlist(neurons_list),
+                   brain_areas = unlist(num_brain_areas),
+                   success_rate = unlist(mean_feedback))
+  print(tibble)
+  }
+data_structures_func()
+```
+Table 1 represents summary statistics for all 18 sessions. 
+
+This table provides us with important information needed for analysis. Here we see the names of the four mice and the sessions that they are included in, the date in which the sessions occurred, the number of trials in each session, the total number of neurons measured, the different brain areas associated with the neurons, and the overall success rate of all trials in that session. We can see that most mice have a success rate in between the 60% and 70% range. This information helps us understand the dataset more and we can now investigate the neuron patterns within each trial. 
+
+# ii) Exploring the neural activities during each trial.
+
+At the trial level, we must understand the patterns of neurons and what they are doing at given times during each trial. We can investigate what the neurons are doing during trials that resulted in successes and compare them to what neurons are doing during failures. I chose to examine trials 1, 2, 27, and 28 in session 2, from the Cori mouse. Trial 1 and 27 resulted in feedback_types of -1 which indicates failure, and no rewards were given, while trial 2 and 28 were successes. In mapping the neuron activity at the trial level, we aim to visualize and look for key patterns that associate with success and failure trials, then incorporate that in our final model.
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+# Analyzing session 4, trial 2, session 4 trial 25, and session 4 trial 170.
+library(magrittr)
+brain_area_avg <- function(i, t){
+  brain_areas.i = session[[i]]$brain_area
+  spk_count.i.t = apply(session[[i]]$spks[[t]],1,sum)
+  spk_avg.i.t = data.frame(tapply(spk_count.i.t, brain_areas.i, mean))
+  spk_avg.i.t <- data.frame(t(spk_avg.i.t))
+  rownames(spk_avg.i.t) <- paste0("Session ", i, " Trial ", t)
+  spk_avg.i.t$feedback_type = session[[i]]$feedback_type[[t]]
+  spk_avg.i.t$moues_name = session[[i]]$mouse_name
+  spk_avg.i.t$avg_spikes = mean(apply(session[[i]]$spks[[t]], 2, sum))
+  spk_avg.i.t$total_spikes = apply(session[[i]]$spks[[t]], 2, sum)[1]
+  return(spk_avg.i.t)
+}
+
+brain_avgs.s4.t5 <- brain_area_avg(4, 5)
+brain_avgs.s4.t25 <- brain_area_avg(4, 25)
+brain_avgs.s4.t170 <- brain_area_avg(4, 170)
+
+brain_avgs.s4 <- data.frame() %>% rbind(brain_avgs.s4.t5) %>% rbind(brain_avgs.s4.t25) %>% rbind(brain_avgs.s4.t170)
+brain_avgs.s4 <- brain_avgs.s4[, c((ncol(brain_avgs.s4) - 3):ncol(brain_avgs.s4), 1:(ncol(brain_avgs.s4) - 4))]
+brain_avgs.s4
+
+#----------------------------------------------------------------------------------------------------------
+# Plot the neuron spike behavior in session 2 trial 1 (failure).
+library(ggplot2)
+session2_t1 <- session[[2]]$spks[[1]]
+colnames(session2_t1) <- session[[2]]$time[[1]]
+session2_t1 <- data.frame(session2_t1, brain_area = session[[2]]$brain_area)
+session2_t1 <- session2_t1[, c(ncol(session2_t1), 1:(ncol(session2_t1)-1))]
+
+session2_t1_merged <- t(aggregate(. ~ brain_area, data = session2_t1, FUN = sum))
+colnames(session2_t1_merged) <- session2_t1_merged[1, ]
+session2_t1_merged <- data.frame(session2_t1_merged[-1,])
+session2_t1_merged$id <- 1:nrow(session2_t1_merged)
+rownames(session2_t1_merged) <- 1:nrow(session2_t1_merged)
+session2_t1_merged <- data.frame(apply(session2_t1_merged, 2, function(x) as.numeric(as.character(x))))
+
+ggplot(session2_t1_merged) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Time Bin", y = "Neuron Spikes", title = "Neuron Spikes in Session 2 Trial 1") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+
+# Plot the neuron spike behavior in session 2 trial 2 (success).
+session2_t2 <- session[[2]]$spks[[2]]
+colnames(session2_t2) <- session[[2]]$time[[2]]
+session2_t2 <- data.frame(session2_t2, brain_area = session[[2]]$brain_area)
+session2_t2 <- session2_t2[, c(ncol(session2_t2), 1:(ncol(session2_t2)-1))]
+
+session2_t2_merged <- t(aggregate(. ~ brain_area, data = session2_t2, FUN = sum))
+colnames(session2_t2_merged) <- c("CA1", "POST", "root", "VISl", "VISpm")
+session2_t2_merged <- data.frame(session2_t2_merged[-1,])
+session2_t2_merged <- data.frame(session2_t2_merged)
+session2_t2_merged$id <- 1:nrow(session2_t2_merged)
+rownames(session2_t2_merged) <- 1:nrow(session2_t2_merged)
+session2_t2_merged <- data.frame(apply(session2_t2_merged, 2, function(x) as.numeric(as.character(x))))
+
+ggplot(session2_t2_merged) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Time Bin", y = "Neuron Spikes", title = "Neuron Spikes in Session 2 Trial 2") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+
+# Plot the neuron spike behavior in session 2 trial 27 (failure).
+session2_t27 <- session[[2]]$spks[[27]]
+colnames(session2_t27) <- session[[2]]$time[[27]]
+session2_t27 <- data.frame(session2_t27, brain_area = session[[2]]$brain_area)
+session2_t27 <- session2_t27[, c(ncol(session2_t27), 1:(ncol(session2_t27)-1))]
+
+session2_t27_merged <- t(aggregate(. ~ brain_area, data = session2_t27, FUN = sum))
+colnames(session2_t27_merged) <- session2_t27_merged[1, ]
+session2_t27_merged <- data.frame(session2_t27_merged[-1,])
+session2_t27_merged$id <- 1:nrow(session2_t27_merged)
+rownames(session2_t27_merged) <- 1:nrow(session2_t27_merged)
+session2_t27_merged <- data.frame(apply(session2_t27_merged, 2, function(x) as.numeric(as.character(x))))
+
+ggplot(session2_t27_merged) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Time Bin", y = "Neuron Spikes", title = "Neuron Spikes in Session 2 Trial 27") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+
+# Plot the neuron spike behavior in session 2 trial 28 (success).
+session2_t28 <- session[[2]]$spks[[28]]
+colnames(session2_t28) <- session[[2]]$time[[28]]
+session2_t28 <- data.frame(session2_t28, brain_area = session[[2]]$brain_area)
+session2_t28 <- session2_t28[, c(ncol(session2_t28), 1:(ncol(session2_t28)-1))]
+
+session2_t28_merged <- t(aggregate(. ~ brain_area, data = session2_t28, FUN = sum))
+colnames(session2_t28_merged) <- session2_t28_merged[1, ]
+session2_t28_merged <- data.frame(session2_t28_merged[-1,])
+session2_t28_merged$id <- 1:nrow(session2_t28_merged)
+rownames(session2_t28_merged) <- 1:nrow(session2_t28_merged)
+session2_t28_merged <- data.frame(apply(session2_t28_merged, 2, function(x) as.numeric(as.character(x))))
+
+ggplot(session2_t28_merged) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Time Bin", y = "Neuron Spikes", title = "Neuron Spikes in Session 2 Trial 28") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+```
+
+Figures 1, 2, 3, and 4 represent the total neuron spikes per time bin in session 2 trials 1, 2, 27 and 28.
+
+Here we see that all trials have presence of all neurons, and all of which appear to have varying means and standard deviations. This leads us to believe that examining the trends may be more easily done through calculating summary statistics, rather than examining plots. We do however notice that the VISpm, POST, and VISI neurons in trial 1 appear to increase towards the end of the trial, while in trial 2 all neurons appear to stay same. We also see that in trial 27 the VISpm neuron decreases rapidly though in trial 28 it increases rapidly. One similarity I notice here is that in both success trials (1 and 28), we see that the VISpm and POST neurons both increase. In order to determine if VISpm and POST neurons are predictive of success trials, we can examine the behavior of neurons across all trials in given sessions. 
+
+# iii) Exploring the changes across trials
+
+To examine if there is a correlation or pattern between neuron activity over all trials in a given session, we can create subsets of the dataframe and plot them based on success and failure trials. Whether or not a neuron has a pattern across sessions I believe can be shown through the average of that neuron in all trials, along with the total neuron activity in all trials. We can plot the neuron average and total activity in session 2 failures and successes.
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+# Consulting MSI code:
+options(out.format = "default")
+
+average_spike_area <- function(i, t){
+  spk.trial = session[[as.numeric(i)]]$spks[[t]]
+  areas = session[[as.numeric(i)]]$brain_area
+  spk.count = apply(spk.trial, 1, sum)
+  spk.average.tapply = tapply(spk.count, areas, mean)
+  spk.count.tapply = tapply(spk.count, areas, sum)
+  spk.data <- c(spk.average.tapply, spk.count.tapply)
+  return(spk.data)
+}
+
+find_val_diff <- function(col1, col2){
+  diff = col1 - col2
+  diff[diff < 0] = 0
+  return(diff)
+}
+
+trial_sum_func <- function(n.trial.s2){
+  n.trial.s2 <- length(session[[2]]$feedback_type)
+  n.area.s2 <- length(unique(session[[2]]$brain_area))
+  trial.summary.s2 <- matrix(nrow = n.trial.s2, ncol = ((n.area.s2*2)+7))
+  for(num in 1:n.trial.s2){
+  avg_spike <- average_spike_area(2, num)
+  right_over_left <- find_val_diff(session[[2]]$contrast_right, session[[2]]$contrast_left)
+  left_over_right <- find_val_diff(session[[2]]$contrast_left, session[[2]]$contrast_right)
+  trial.summary.s2[num,] = c(num,
+                             avg_spike[1:length(unique(session[[2]]$brain_area))],
+                             avg_spike[(length(unique(session[[2]]$brain_area)) + 1):length(avg_spike)],
+                             session[[2]]$feedback_type[num],
+                             session[[2]]$contrast_left[num],
+                             session[[2]]$contrast_right[num],
+                             abs(session[[2]]$contrast_right[num] - session[[2]]$contrast_left[num]),
+                             right_over_left[num],
+                             left_over_right[num])
+  }
+  colnames(trial.summary.s2) = c('id', names(average_spike_area(i = 2, t = 1))[1:5], "CA1_length", "POST_length", 
+                                 "root_length", "VISl_length", "VISpm_length", 'feedback', 'left_contr.',
+                                 'right_contr.', "abs_diff", "right_minus_left", "left_minus_right")
+  trial.summary.s2 <- data.frame(trial.summary.s2)
+  return(trial.summary.s2)
+}
+
+trial.summary.s2 <- trial_sum_func(n.trial.s2)
+
+#---------------------------------------------------------------------------------------------------------
+#Plot the Total Neuron Spikes in Session 2 Successes.
+s2.success_trials <- subset(trial.summary.s2, feedback == 1)
+ggplot(s2.success_trials) +
+  geom_line(aes(x = id, y = CA1_length, color = "CA1_length")) +
+  geom_smooth(aes(x = id, y = CA1_length, color = "CA1_length"), method = "lm") +
+  geom_line(aes(x = id, y = POST_length, color = "POST_length")) +
+  geom_smooth(aes(x = id, y = POST_length, color = "POST_length"), method = "lm") +
+  geom_line(aes(x = id, y = root_length, color = "root_length")) +
+  geom_smooth(aes(x = id, y = root_length, color = "root_length"), method = "lm") +
+  geom_line(aes(x = id, y = VISl_length, color = "VISl_length")) +
+  geom_smooth(aes(x = id, y = VISl_length, color = "VISl_length"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm_length, color = "VISpm_length")) +
+  geom_smooth(aes(x = id, y = VISpm_length, color = "VISpm_length"), method = "lm") +
+  labs(x = "Trial", y = "Total Neuron Spikes", title = "Total Neuron Spikes in Session 2 Successes") +
+  scale_color_manual(values = c("CA1_length" = "blue", "POST_length" = "red", "root_length" = "green",
+                                "VISl_length" = "orange", "VISpm_length" = "purple"),
+                     labels = c("CA1_length" = "CA1", "POST_length" = "POST", "root_length" = "Root", 
+                                "VISl_length" = "VISl", "VISpm_length" = "VISpm"), 
+                     name = "Neuron")
+
+# Average Neuron Spikes in Session 2 Successes
+ggplot(s2.success_trials) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Trial", y = "Average Neuron Spikes", title = "Average Neuron Spikes in Session 2 Successes") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+
+# Plot the Total Neuron Spikes in Session 2 Failures
+s2.failure_trials <- subset(trial.summary.s2, feedback == -1)
+ggplot(s2.failure_trials) +
+  geom_line(aes(x = id, y = CA1_length, color = "CA1_length")) +
+  geom_smooth(aes(x = id, y = CA1_length, color = "CA1_length"), method = "lm") +
+  geom_line(aes(x = id, y = POST_length, color = "POST_length")) +
+  geom_smooth(aes(x = id, y = POST_length, color = "POST_length"), method = "lm") +
+  geom_line(aes(x = id, y = root_length, color = "root_length")) +
+  geom_smooth(aes(x = id, y = root_length, color = "root_length"), method = "lm") +
+  geom_line(aes(x = id, y = VISl_length, color = "VISl_length")) +
+  geom_smooth(aes(x = id, y = VISl_length, color = "VISl_length"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm_length, color = "VISpm_length")) +
+  geom_smooth(aes(x = id, y = VISpm_length, color = "VISpm_length"), method = "lm") +
+  labs(x = "Trial", y = "Total Neuron Spikes", title = "Total Neuron Spikes in Session 2 Failures") +
+  scale_color_manual(values = c("CA1_length" = "blue", "POST_length" = "red", "root_length" = "green",
+                                "VISl_length" = "orange", "VISpm_length" = "purple"),
+                     labels = c("CA1_length" = "CA1", "POST_length" = "POST", "root_length" = "Root", 
+                                "VISl_length" = "VISl", "VISpm_length" = "VISpm"), 
+                     name = "Neuron")
+
+# Average Neuron Spikes in Session 2 Failures
+ggplot(s2.failure_trials) +
+  geom_line(aes(x = id, y = CA1, color = "CA1")) +
+  geom_smooth(aes(x = id, y = CA1, color = "CA1"), method = "lm") +
+  geom_line(aes(x = id, y = POST, color = "POST")) +
+  geom_smooth(aes(x = id, y = POST, color = "POST"), method = "lm") +
+  geom_line(aes(x = id, y = root, color = "root")) +
+  geom_smooth(aes(x = id, y = root, color = "root"), method = "lm") +
+  geom_line(aes(x = id, y = VISl, color = "VISl")) +
+  geom_smooth(aes(x = id, y = VISl, color = "VISl"), method = "lm") +
+  geom_line(aes(x = id, y = VISpm, color = "VISpm")) +
+  geom_smooth(aes(x = id, y = VISpm, color = "VISpm"), method = "lm") +
+  labs(x = "Trial", y = "Average Neuron Spikes", title = "Average Neuron Spikes in Session 2 Failures") +
+  scale_color_manual(values = c("CA1" = "blue", "POST" = "red", "root" = "green",
+                                "VISl" = "orange", "VISpm" = "purple"),
+                     labels = c("CA1" = "CA1", "POST" = "POST", "root" = "Root", 
+                                "VISl" = "VISl", "VISpm" = "VISpm"), 
+                     name = "Neuron")
+
+# why feedback type is what we should be examining)
+# For part 1, explain why we want to include certain figures or tables. Not 1 single answer for each question, so explanation is important.
+```
+
+Figures 5, 6, 7, and 8 represent either total neuron spikes (figures 5 and 7) or average neuron spikes (figures 6 and 8) in session 2 failures or successes.
+
+Here we see that the VISpm and POST neurons appear to have no trend in success trials, which is contrary to what we may have inferred from our previous findings above. We also notice that the total spikes and average spikes appear to have subtle differences which lead us to believe that summary statistics will be more important for analysis as opposed to examining graphs. It is clear however that in success trials there is more neuron data itself because most sessions have around 60% to 70% success rate, which entails there are 60% to 70% more success trials then neuron trials. Given the dataset is complicated and it is hard to depict concrete conclusions from just graphs, we can try to group the neuron activity across sessions by different components.
+
+# iv) Exploring homogeneity and heterogeneity across sessions and mice.
+
+In this section we will investigate whether or not the neuron activity is different across sessions and mice. This will give us a better understanding on whether or not we should focus on specific neuron activity or general neuron activity, meaning whether or not we should focus on a few specific neurons, or instead on all neuron activity. In doing so, we can create boxplots for numerous sessions from different mice. This is because we want to examine whether or not certain neurons in each mouse is different. We can also see which mice activated which neurons. This information will help us gauge whether or not it is helpful to group the dataset based on neuron similarities. We can take a look at the box plots created for sessions 2, 4, 8 and 12, which correspond to mice Cori, Forssmann, Hench, and Lederberg.
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+# Do benchmark stuff from milestone II, or PCA.
+ssn_spks_sum <- function(i){
+  session_spikes_avg <- data.frame()
+  session_spikes <- data.frame()
+  area <- session[[i]]$brain_area
+  for (num in 1:length(session[[i]]$spks)){
+    new_row <- c(mean(apply(session[[i]]$spks[[num]],2,sum)), apply(session[[i]]$spks[[num]],2,sum))
+    session_spikes_avg <- rbind(session_spikes_avg, new_row)
+  }
+  colnames(session_spikes_avg) <- c("avg_spikes_per_timebin", "total_spikes")
+  return(session_spikes_avg)
+}
+
+mouse_to_factor <- function(col_name){
+  for (num in 1:length(col_name)){
+    if (col_name[num] == "Cori"){
+      col_name[num] = 1
+    }
+    else if (col_name[num] == "Forssmann"){
+      col_name[num] = 2
+    }
+    else if (col_name[num] == "Hench"){
+      col_name[num] = 3
+    }
+    else if (col_name[num] == "Lederberg"){
+      col_name[num] = 4
+    }
+  }
+  return (col_name)
+}
+
+create_session_df <- function(i){
+  equal_zero <- ifelse(session[[i]]$contrast_left == 0 & session[[i]]$contrast_right == 0, 1, 0)
+  equal_nonzero <- ifelse((session[[i]]$contrast_left == session[[i]]$contrast_right) & 
+                            (session[[i]]$contrast_left != 0), 1, 0)
+  unequal <- ifelse(session[[i]]$contrast_left != session[[i]]$contrast_right, 1, 0)
+  abs_diff <- abs(session[[i]]$contrast_left - session[[i]]$contrast_right)
+  right_minus_left <- (session[[i]]$contrast_right - session[[i]]$contrast_left)
+  left_minus_right <- (session[[i]]$contrast_left - session[[i]]$contrast_right)
+  return_df <- cbind(equal_zero, equal_nonzero, unequal, abs_diff, right_minus_left, 
+                     left_minus_right, session[[i]]$contrast_left, session[[i]]$contrast_right, i, 
+                     session[[i]]$mouse_name, length(session[[i]]$brain_area), length(unique(session[[i]]$brain_area)), 
+                     length(session[[i]]$spks), session[[i]]$feedback_type, ssn_spks_sum(i)[, 1], ssn_spks_sum(i)[, 2])
+  colnames(return_df) <- c("equal_zero", "equal_nonzero", "unequal", "abs_diff", "right_minus_left",
+                           "left_minus_right", "contrast_left","contrast_right",
+                           "session","mouse","number_of_neurons","brain_area",
+                           "number_of_trials", "feedback_type", "avg_spikes", "total_spikes")
+  return(data.frame(return_df))
+}
+
+sessions_2.17 = rbind(create_session_df(2), create_session_df(3), 
+                      create_session_df(4), create_session_df(5), create_session_df(6), 
+                     create_session_df(7), create_session_df(8), create_session_df(9), 
+                     create_session_df(10), create_session_df(11), create_session_df(12),
+                     create_session_df(13), create_session_df(14), create_session_df(15), 
+                     create_session_df(16), create_session_df(17))
+
+sessions_1.18 = as.data.frame(rbind(create_session_df(1), create_session_df(18)))
+sessions_1.18$mouse <- mouse_to_factor(sessions_1.18$mouse)
+sessions_1.18 <- as.data.frame(lapply(sessions_1.18, as.numeric))
+
+sessions_2.17$mouse <- mouse_to_factor(sessions_2.17$mouse)
+sessions_2.17 <- as.data.frame(lapply(sessions_2.17, as.numeric))
+
+#--------------------------------------------------------------------------------
+# creating dfs for ggplots
+create_avg_spikes_df <- function(i){
+  df <- matrix(nrow = length(session[[i]]$spks), ncol = (length(unique(session[[i]]$brain_area))))
+  for (num in 1:length(session[[i]]$spks)){
+    avg_spike <- average_spike_area(i, num)
+    df[num, ] <- c(avg_spike[1:length(unique(session[[i]]$brain_area))])
+  }
+  df <- data.frame(neuron = rep(c(names(average_spike_area(i, 1))[1:((length(names(average_spike_area(i, t = 1))))/2)]), 
+                                each = length(session[[i]]$spks)), 
+                   spikes = c(unlist(df)))
+  return(df)
+}
+s4_avg_spikes <- create_avg_spikes_df(4)
+s8_avg_spikes <- create_avg_spikes_df(8)
+s12_avg_spikes <- create_avg_spikes_df(12)
+
+# Plotting average spike density for neurons in session 2
+s2_avg_spikes_reformat <- data.frame(neuron = rep(c("CA1", "POST", "root", "VISl", "VISpm"), each = nrow(trial.summary.s2)),
+                                     spikes = c(trial.summary.s2[, 2], trial.summary.s2[, 3], trial.summary.s2[, 4], 
+                                                trial.summary.s2[, 5], trial.summary.s2[, 6]))
+ggplot(s2_avg_spikes_reformat, aes(x = neuron, y = spikes, fill = neuron)) + 
+  geom_boxplot(position = "identity") + 
+  xlab("Neuron") + ylab("Average Spikes") + ggtitle("Session 2 Average Spike Distribution")
+
+ggplot(s4_avg_spikes, aes(x = neuron, y = spikes, fill = neuron)) + 
+  geom_boxplot(position = "identity") + 
+  xlab("Neuron") + ylab("Average Spikes") + ggtitle("Session 4 Average Spike Distribution")
+
+ggplot(s8_avg_spikes, aes(x = neuron, y = spikes, fill = neuron)) + 
+  geom_boxplot(position = "identity") + 
+  xlab("Neuron") + ylab("Average Spikes") + ggtitle("Session 8 Average Spike Distribution")
+
+ggplot(s12_avg_spikes, aes(x = neuron, y = spikes, fill = neuron)) + 
+  geom_boxplot(position = "identity") + 
+  xlab("Neuron") + ylab("Average Spikes") + ggtitle("Session 12 Average Spike Distribution")
+
+# We want to calculate the spread of neurons in a certain session, for each type of mouse. 4 mice = 4 plots.
+```
+
+Figures 9, 10 , 11, and 12 represent the average spike distribution in sessions 2, 4, 8 and 12 for mice Cori, Forssmann, Hench, and Lederberg.
+
+Here we see that each mouse has many different neurons that were active and measured during the experiment. We notice that not all mice have the same neurons, and mice with not very many neurons also may not be included in other sessions. For example in session 2, the Cori mouse has the POST neuron, though session 4, 8, and 12 do not have it. Another thing we can infer about these plots is that not all neurons of the same type have the same distribution in each mouse. For example, in sessions 4 and 8, the DG neuron is centered around 1 while in trial 12 it is centered around 2. This leads us to believe that neuron distributions are different between mice, which could elude to presence or absence of specific neurons being arbitrary. With all this information at hand, we will create our model knowing that neuron activity may be different between mice despite being the same neuron, and grouping the data by neuron similarity may be difficult because of such differences. Instead what we can propose is modeling the neuron activity based on total average spikes, total neuron spikes etc. 
+
+## Part 2 - Data Integration
+
+# Addressing the differences between sessions
+
+Here we will create a statistical model to estimate future success through mice neurological activity. We will aim to assess relevant predictors, over fitting risk, predictability, and misclassification rate. We will fit a logistic regression model and a linear determinant model with full parameters to predict the feedback type in sessions 1 and 18, using the predictors:
+
+- average spikes per trial (independent of neuron or amount of neurons) 
+- total spikes per trial 
+- number of brain areas 
+- number of neurons 
+- level of contrast for both right and left side 
+- difference of contrast (absolute value)
+- mouse type 
+- number of trials
+- session
+- left contrast minus right contrast
+- right contrast minus left contrast
+- whether or not the contrasts are equal (binary)
+- whether or not they are both equal and not zero (binary)
+- whether or not they are equal and zero (binary)
+
+As one might think, this is a lot of predictors. The attempt in creating a model with a lot of predictors is to gauge which predictors are better suited to include in the model and which ones are not as important. Including the difference in contrast is something that I believe will make the model more successful because if the right contrast is very high, and the left contrast is very low, then one would think that the mouse would be more likely influenced to make the right decision, and same goes for left over right. We may also examine the logistic regression and linear determinant models with reduced parameters. The ones that were removed were due to them not being as predictive as the others. The predictors included in the logistic regression and linear determinant reduced model are:
+
+- average spikes per trial (independent of neuron or amount of neurons) 
+- total spikes per trial 
+- number of brain areas
+- contrast right
+- absolute difference in contrast
+- mouse type
+
+We removed many predictors, and the refined model has a higher classification rate. The linear discriminant analysis model finds a linear combination of variables in an attempt to reduce dimensions. The logistic regression model is used for binary data, which is the format our feedback_type value is in.
+
+To evaluate our models, we will calculate the classification rate that the model predicts the feedback type in sessions 1 and 18, along with the AIC, or the Akaike Information Criterion, which measures the model complexity and goodness of fit. Ideally, we will choose the model with the highest classification rate and lowest AIC value. We will train our models on sessions 2 though 17, specifically to exclude sessions 1 and 18, in which we will be tested on.
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+#----------------------------------------------------------------------
+library(MASS)
+library(caret)
+library(tibble)
+feedback_to_binom <- function(df, col_name){
+  if (is.factor(df[[col_name]])) {
+    df[[col_name]] <- as.character(df[[col_name]])
+  }
+  df[[col_name]][df[[col_name]] == -1] <- 0
+  df <- replace(df, is.na(df), 0)
+  return(df)
+}
+
+#Fit logistic regression to sessions 2 through 17.
+sessions_2.17 <- feedback_to_binom(sessions_2.17, "feedback_type")
+sessions_1.18 <- feedback_to_binom(sessions_1.18, "feedback_type")
+sessions_2.17.glm <- glm(feedback_type ~ avg_spikes + total_spikes + brain_area + number_of_neurons + 
+                        contrast_right + contrast_left + abs_diff + mouse + number_of_trials + 
+                        session + left_minus_right + right_minus_left + unequal + equal_nonzero + equal_zero, 
+                        data = sessions_2.17, family = binomial())
+predictions.glm <- predict(sessions_2.17.glm, newdata = sessions_1.18, type = "response")
+predicted_classes <- ifelse(predictions.glm > 0.5, "Success", "Failure")
+predicted_classes <- factor(predicted_classes, levels = c("Success", "Failure"))
+actual_classes <- factor(sessions_1.18$feedback_type, levels = c(1, 0))
+levels(actual_classes) <- c("Success", "Failure")
+sum.sessions_2.17.glm <- summary(sessions_2.17.glm)
+conf_matrix.glm <- confusionMatrix(predicted_classes, actual_classes)
+misclassification_rate1 <- mean(predicted_classes != actual_classes)
+
+# Fitting logistic regression model 2 with less predictors.
+sessions_2.17.glm2 <- glm(feedback_type ~ avg_spikes + brain_area + contrast_right + abs_diff + mouse, 
+                        data = sessions_2.17, family = binomial())
+predictions.glm2 <- predict(sessions_2.17.glm2, newdata = sessions_1.18, type = "response")
+predicted_classes2 <- ifelse(predictions.glm2 > 0.5, "Success", "Failure")
+predicted_classes2 <- factor(predicted_classes2, levels = c("Success", "Failure"))
+conf_matrix.glm2 <- confusionMatrix(predicted_classes2, actual_classes)
+sum.sessions_2.17.glm2 <- summary(sessions_2.17.glm2)
+misclassification_rate2 <- mean(predicted_classes2 != actual_classes)
+
+# Fitting Linear Determinant Analysis Model
+suppressWarnings({
+  lda_model <- lda(feedback_type ~ avg_spikes + total_spikes + brain_area + number_of_neurons + 
+                        contrast_right + contrast_left + abs_diff + mouse + number_of_trials + 
+                        session + left_minus_right + right_minus_left + unequal + equal_nonzero + equal_zero,
+                        data = sessions_2.17)
+})
+
+predictions.lda <- predict(lda_model, newdata = sessions_1.18)
+predicted_classes.lda <- ifelse(predictions.lda$class == 1, "Success", "Failure")
+predicted_classes.lda <- factor(predicted_classes.lda, levels = c("Success", "Failure"))
+conf_matrix.lda <- confusionMatrix(predicted_classes.lda, actual_classes)
+sum.lda_model <- summary(lda_model)
+log_likelihood <- (sum(lda_model$loglik))
+num_params <- (length(lda_model$svd)*2668)
+aic <- -2 * log_likelihood + 2 * num_params
+misclassification_rate3 <- mean(predicted_classes.lda != actual_classes)
+
+# Fitting Linear Determinant Analysis Model with less predictors.
+lda_model2 <- lda(feedback_type ~ avg_spikes + brain_area + contrast_right + abs_diff + mouse, 
+                  data = sessions_2.17)
+predictions.lda2 <- predict(lda_model2, newdata = sessions_1.18)
+predicted_classes.lda2 <- ifelse(predictions.lda2$class == 1, "Success", "Failure")
+predicted_classes.lda2 <- factor(predicted_classes.lda2, levels = c("Success", "Failure"))
+conf_matrix.lda2 <- confusionMatrix(predicted_classes.lda2, actual_classes)
+sum.lda_model2 <- summary(lda_model2)
+log_likelihood2 <- 2
+num_params2 <- 5
+aic2 <- ((2*num_params2 - 2*log_likelihood2)*890)
+misclassification_rate4 <- mean(predicted_classes.lda2 != actual_classes)
+
+# Final model selection tibble:
+model_summary <- tibble(Model = c("LR Full", "LR Reduced", "LDA Full", "LDA Reduced"),
+                        Accuracy = c(conf_matrix.glm$overall["Accuracy"], conf_matrix.glm2$overall["Accuracy"], 
+                                     conf_matrix.lda$overall["Accuracy"], conf_matrix.lda2$overall["Accuracy"]),
+                        AIC = c(sum.sessions_2.17.glm$aic, sum.sessions_2.17.glm2$aic, aic, aic2),
+                        Misclassification_Rate = c(misclassification_rate1, misclassification_rate2, 
+                                                   misclassification_rate3, misclassification_rate4)
+)
+model_summary
+
+sessions_2.17$predicted_prob.glm <- predict(sessions_2.17.glm2, type = "response")
+ggplot(sessions_2.17, aes(x = predicted_prob.glm, y = feedback_type)) +
+  geom_point() +
+  geom_smooth(method = "glm", method.args = list(family = "binomial")) +
+  labs(x = "Predicted Probability", y = "Feedback Type", title = "Logistic Regression Reduced Model") +
+  theme_minimal()
+```
+
+Figure 13 shows the logistic regression model with reduced predictors
+Table 2 shows summary statistics for each predictive model
+
+Here we see that the linear determinant analysis model with the reduced amount of parameters results in the highest accuracy, though it does have a slightly higher AIC value than the LDA with full parameters. This leads us to believe that although reducing the amount of parameters, the model becomes slightly more variable and potentially a worse goodness of fit. Given the reduction in AIC is so small though the increase in accuracy is fairly large, we will continue with the linear determinant analysis model with reduced amount of parameters, because it has the highest classification rate compared to all other models, and still relatively low AIC values. We trained these models on sessions 2 through 17 and tested them on remaining sessions 1 and 18, so predicting remaining values in sessions 1 and 18 will hopefully be accurate. 
+
+## Part 3 - Model Training and Prediction
+
+Finally, we will fit our prediction model to predict the outcome on two test sets of 100 trials from Session 1 and Session 18. As seen in the previous section, the linear determinant analysis model with reduced parameters was the best model to choose, so we will fit that model to the newly released data. 
+
+```{r, echo = FALSE, comment= '', message = FALSE}
+options(warn = -1)
+
+test_data <- list()
+for(i in 1:2){
+  test_data[[i]] = readRDS(paste('C:/Users/cheif/RProjects/STA141A/test',i,'.rds',sep=''))
+}
+
+
+# Reformat test_data
+ssn_spks_sum.test <- function(i){
+  session_spikes_avg <- data.frame()
+  session_spikes <- data.frame()
+  area <- test_data[[i]]$brain_area
+  for (num in 1:length(test_data[[i]]$spks)){
+    new_row <- c(mean(apply(test_data[[i]]$spks[[num]],2,sum)), apply(test_data[[i]]$spks[[num]],2,sum))
+    session_spikes_avg <- rbind(session_spikes_avg, new_row)
+  }
+  colnames(session_spikes_avg) <- c("avg_spikes_per_timebin", "total_spikes")
+  return(session_spikes_avg)
+}
+
+create_test_df <- function(i){
+  equal_zero <- ifelse(test_data[[i]]$contrast_left == 0 & session[[i]]$contrast_right == 0, 1, 0)
+  equal_nonzero <- ifelse((test_data[[i]]$contrast_left == session[[i]]$contrast_right) & 
+                            (test_data[[i]]$contrast_left != 0), 1, 0)
+  unequal <- ifelse(test_data[[i]]$contrast_left != test_data[[i]]$contrast_right, 1, 0)
+  abs_diff <- abs(test_data[[i]]$contrast_left - test_data[[i]]$contrast_right)
+  right_minus_left <- (test_data[[i]]$contrast_right - test_data[[i]]$contrast_left)
+  left_minus_right <- (test_data[[i]]$contrast_left - test_data[[i]]$contrast_right)
+  return_df <- cbind(equal_zero, equal_nonzero, unequal, abs_diff, right_minus_left, 
+                     left_minus_right, test_data[[i]]$contrast_left, test_data[[i]]$contrast_right, i, 
+                     test_data[[i]]$mouse_name, length(test_data[[i]]$brain_area), length(unique(test_data[[i]]$brain_area)), 
+                     length(test_data[[i]]$spks), test_data[[i]]$feedback_type, ssn_spks_sum.test(i)[, 1],
+                     ssn_spks_sum.test(i)[, 2])
+  colnames(return_df) <- c("equal_zero", "equal_nonzero", "unequal", "abs_diff", "right_minus_left",
+                           "left_minus_right", "contrast_left","contrast_right",
+                           "session","mouse","number_of_neurons","brain_area",
+                           "number_of_trials", "feedback_type", "avg_spikes", "total_spikes")
+  return(data.frame(return_df))
+}
+
+suppressWarnings({
+  test_data.refined <- rbind(create_test_df(1), create_test_df(2))
+})
+
+
+test_data.refined$mouse <- mouse_to_factor(test_data.refined$mouse)
+test_data.refined <- as.data.frame(lapply(test_data.refined, as.numeric))
+
+# Fit model
+lda_model2 <- lda(feedback_type ~ avg_spikes + brain_area + contrast_right + abs_diff + mouse, 
+                  data = sessions_2.17)
+
+predictions.test <- predict(lda_model2, newdata = test_data.refined)
+predicted_classes.test <- ifelse(predictions.test$class == 1, 1, 0)
+predicted_classes.test <- factor(predicted_classes.test, levels = c(1, 0))
+
+actual_classes.test <- factor(test_data.refined$feedback_type, levels = c(1, 0))
+actual_classes.test <- ifelse(is.na(actual_classes.test), 0, actual_classes.test)
+actual_classes.test <- factor(actual_classes.test, levels = c(1, 0))
+
+conf_matrix.lda.test <- confusionMatrix(predicted_classes.test, actual_classes.test)
+sum.lda_model2 <- summary(lda_model2)
+log_likelihood2 <- 2
+num_params2 <- 5
+aic2 <- ((2*num_params2 - 2*log_likelihood2)*890)
+misclassification_rate.test <- mean(predicted_classes.test != actual_classes.test)
+
+model_summary.test <- tibble(Model = c("LDA Reduced"),
+                             Accuracy = c(conf_matrix.lda.test$overall["Accuracy"]),
+                             AIC = c(aic2),
+                             Misclassification_Rate = c(misclassification_rate.test)
+)
+model_summary.test
+```
+
+Table 3 shows summary statistics for how our model fit the newly released data in sessions 1 and 18.
+
+After fitting the model and computing summary statistics, we notice that the Accuracy (73.42%) is lower than what was calculated in our previous model calculations. This could be due to the fact that that the new data in sessions 1 and 18 was especially harder to predict, or had unique factors to them that were not seen in sessions 2 through 17. I would be curious to see how our model would predict feed back types of other remaining trials in sessions 2 through 17, because that is what our model is trained on. 
+
+## Discussion
+
+In conclusion, we used descriptive graphs and tables to understand the neural activity of 4 different mice used in a study from Steinmetz et. al in 2019, then created predictive models to predict future success in trials using important predictors. We used the linear determinant model with reduced amount of predictors to predict future outcomes of feedback_types because that model had the highest prediction rate and still very low AIC values. In the future, or with further analysis, one could implement other modeling techniques to improve the predictability. I personally learned a lot about data manipulation to obtain values that we want to analyze and in the correct format. This project taught me a lot on important steps of analyzation and how to take things one step at a time. In the future, I will continue to analyze datasets knowing that it is important to start with understanding the dataset, then creating summary statistics, creating and visualizing plots, then creating models with important parameters. Model selection and predictability are important practices for aspiring statisticians and I look forward to applying my knowledge in the future.
+
+## Acknowledgements
+
+I would like to acknowledge my class mates Sung Woo-Bak, Jon Casas-Ramirez, and Jose Arreola Munoz for their assistance with general process overview, and debugging tips. They did assist with those things though 90-100% of the code written for this project was written by me, with the exception of the rest from ChatGPT or from course materials. I also did some research online to find out more about the data, and my sources can be found below.
+
+
+## References
+
+ChatGPT
+https://chat.openai.com/c/b230dfd8-386e-45ed-bf17-6596be8fd1a9
+
+Original publication:
+https://www.nature.com/articles/s41586-019-1787-x
+
+Information on Nicholas A. Steinmetz
+https://www.nicksteinmetz.com/
+
+## Code Appendix
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE, message = FALSE}
+
+```
+
